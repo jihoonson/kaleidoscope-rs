@@ -1,0 +1,8 @@
+[package]
+name = "kaleidoscope"
+version = "0.1.0"
+authors = ["Jihoon Son <jihoonson@apache.org>"]
+
+[dependencies]
+regex = "*"
+regex_macros = "*"
