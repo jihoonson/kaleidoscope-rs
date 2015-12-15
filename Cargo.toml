@@ -6,3 +6,6 @@ authors = ["Jihoon Son <jihoonson@apache.org>"]
 [dependencies]
 regex = "*"
 regex_macros = "*"
+docopt = "*"
+docopt_macros = "*"
+rustc-serialize = "*"
