@@ -9,3 +9,7 @@ regex_macros = "*"
 docopt = "*"
 docopt_macros = "*"
 rustc-serialize = "*"
+llvm-sys = "*"
+
+[dependencies.iron_llvm]
+git = "https://github.com/jauhien/iron-llvm.git"
