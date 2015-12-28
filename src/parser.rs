@@ -12,8 +12,8 @@ use lexer::Token::{
 };
 use std::collections::HashMap;
 use parser::PartParsingResult::{Good, NotComplete, Bad};
-use parser::ASTNode::{ExternNode, FunctionNode};
-use parser::Expression::{LiteralExpr, VariableExpr, BinaryExpr, CallExpr};
+pub use self::ASTNode::{ExternNode, FunctionNode};
+pub use self::Expression::{LiteralExpr, VariableExpr, BinaryExpr, CallExpr};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum ASTNode {

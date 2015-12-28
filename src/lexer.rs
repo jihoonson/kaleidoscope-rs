@@ -1,3 +1,5 @@
+use regex::Regex;
+
 pub use self::Token::{
   Def,
   Extern,
@@ -24,17 +26,26 @@ pub enum Token {
 }
 
 pub fn tokenize(input: &str) -> Vec<Token> {
-  let comment_re = regex!(r"(?m)#.*\n");
+  // let comment_re = regex!(r"(?m)#.*\n");
+  let comment_re = Regex::new(r"(?m)#.*\n").unwrap();
   let preprocessed = comment_re.replace_all(input, "\n");
 
-  let token_re = regex!(concat!(
+  // let token_re = regex!(concat!(
+  //         r"(?P<ident>\p{Alphabetic}\w*)|",
+  //         r"(?P<number>\d+\.?\d*)|",
+  //         r"(?P<delimiter>;)|",
+  //         r"(?P<oppar>\()|",
+  //         r"(?P<clpar>\))|",
+  //         r"(?P<comma>,)|",
+  //         r"(?P<operator>\S)"));
+  let token_re = Regex::new(concat!(
           r"(?P<ident>\p{Alphabetic}\w*)|",
           r"(?P<number>\d+\.?\d*)|",
           r"(?P<delimiter>;)|",
           r"(?P<oppar>\()|",
           r"(?P<clpar>\))|",
           r"(?P<comma>,)|",
-          r"(?P<operator>\S)"));
+          r"(?P<operator>\S)")).unwrap();
 
   let result: Vec<Token> = token_re.captures_iter(preprocessed.as_str()).map(|cap| {
     match vec!["ident", "number", "delimiter", "oppar", "clpar", "comma", "operator"].iter()

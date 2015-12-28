@@ -1,9 +1,17 @@
 #![feature(convert)]
 #![feature(plugin)]
-#![plugin(regex_macros)]
+
 extern crate regex;
+extern crate llvm_sys;
+extern crate iron_llvm;
 
 pub mod lexer;
+pub mod context;
+pub mod builder;
+pub mod module;
+pub mod parser;
+pub mod driver;
+pub mod jitter;
 
 #[test]
 fn it_works() {

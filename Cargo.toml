@@ -4,12 +4,14 @@ version = "0.1.0"
 authors = ["Jihoon Son <jihoonson@apache.org>"]
 
 [dependencies]
-regex = "*"
-regex_macros = "*"
-docopt = "*"
-docopt_macros = "*"
-rustc-serialize = "*"
-llvm-sys = "*"
+memchr = "<= 0.1.6"
+libc = "< 0.2"
+llvm-sys = "^0.2"
+regex = "< 0.1.40"
+# regex_macros = "< 0.1.24"
+docopt = "0.6.78"
+# docopt_macros = "0.6.78"
+rustc-serialize = "^0.3"
 
 [dependencies.iron_llvm]
-git = "https://github.com/jauhien/iron-llvm.git"
+git = "https://github.com/jihoonson/iron-llvm.git"

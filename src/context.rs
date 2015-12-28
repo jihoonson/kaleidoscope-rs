@@ -6,10 +6,10 @@ use iron_llvm::core::types::{RealTypeCtor, RealTypeRef};
 use iron_llvm::{LLVMRef, LLVMRefCtor};
 
 pub struct Context {
-  context: core::Context,
-  builder: core::Builder,
-  named_values: HashMap<String, LLVMValueRef>,
-  ty: RealTypeRef,
+  pub context: core::Context,
+  pub builder: core::Builder,
+  pub named_values: HashMap<String, LLVMValueRef>,
+  pub ty: RealTypeRef,
 }
 
 impl Context {
