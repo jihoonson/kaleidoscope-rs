@@ -1,5 +1,6 @@
 #![feature(convert)]
 #![feature(plugin)]
+#![feature(box_syntax)]
 
 extern crate regex;
 extern crate llvm_sys;

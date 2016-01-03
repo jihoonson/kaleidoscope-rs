@@ -2,6 +2,11 @@ use lexer::Token;
 use lexer::Token::{
   Def,
   Extern,
+  If,
+  Then,
+  Else,
+  For,
+  In,
   Delimiter,
   LeftParen,
   RightParen,
@@ -13,7 +18,7 @@ use lexer::Token::{
 use std::collections::HashMap;
 use parser::PartParsingResult::{Good, NotComplete, Bad};
 pub use self::ASTNode::{ExternNode, FunctionNode};
-pub use self::Expression::{LiteralExpr, VariableExpr, BinaryExpr, CallExpr};
+pub use self::Expression::{LiteralExpr, VariableExpr, BinaryExpr, CallExpr, ConditionalExpr, LoopExpr};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum ASTNode {
@@ -38,6 +43,8 @@ pub enum Expression {
   LiteralExpr(f64),
   VariableExpr(String),
   BinaryExpr(String, Box<Expression>, Box<Expression>),
+  ConditionalExpr{cond_expr: Box<Expression>, then_expr: Box<Expression>, else_expr: Box<Expression>},
+  LoopExpr{var_name: String, start_expr: Box<Expression>, end_expr: Box<Expression>, step_expr: Box<Expression>, body_expr: Box<Expression>},
   CallExpr(String, Vec<Expression>)
 }
 
@@ -212,6 +219,8 @@ fn parse_primary_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) ->
   match tokens.last() {
     Some(&Ident(_)) => parse_ident_expr(tokens, settings),
     Some(&Number(_)) => parse_literal_expr(tokens, settings),
+    Some(&If) => parse_conditional_expr(tokens, settings),
+    Some(&For) => parse_for_expr(tokens, settings),
     Some(&LeftParen) => parse_paren_expr(tokens, settings),
     None => NotComplete,
     _ => error("unknown token when expecting an expression")
@@ -255,6 +264,65 @@ fn parse_literal_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) ->
   );
 
   Good(LiteralExpr(value), parsed_tokens)
+}
+
+fn parse_conditional_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Expression> {
+  tokens.pop();
+  let mut parsed_tokens = vec![If];
+  let cond_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  expect_tokens!(
+    [Then, Then, ()] <= tokens,
+    parsed_tokens, "expected then");
+  let then_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  expect_tokens!(
+    [Else, Else, ()] <= tokens,
+    parsed_tokens, "expected else");
+  let else_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  Good(ConditionalExpr{cond_expr: box cond_expr, then_expr: box then_expr, else_expr: box else_expr}, parsed_tokens)
+}
+
+fn parse_for_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Expression> {
+  tokens.pop();
+  let mut parsed_tokens = vec![For];
+  let var_name = expect_tokens!(
+    [Ident(name), Ident(name.clone()), name] <= tokens,
+    parsed_tokens, "expected identifier after for"
+  );
+
+  expect_tokens!(
+    [Operator(op), Operator(op.clone()), {
+      if op.as_str() != "=" {
+        return error("expected '=' after for")
+      }
+    }] <= tokens,
+    parsed_tokens, "expected '=' after for"
+  );
+
+  let start_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  expect_tokens!(
+    [Comma, Comma, ()] <= tokens,
+    parsed_tokens, "expected ',' after for start expression"
+  );
+
+  let end_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  let step_expr = expect_tokens!(
+    [Comma, Comma, parse_try!(parse_expr, tokens, settings, parsed_tokens)]
+    else {LiteralExpr(1.0)}
+    <= tokens, parsed_tokens
+  );
+
+  expect_tokens!(
+    [In, In, ()] <= tokens, parsed_tokens, "expected 'in' after for"
+  );
+
+  let body_expr = parse_try!(parse_expr, tokens, settings, parsed_tokens);
+
+  Good(LoopExpr{var_name: var_name, start_expr: box start_expr, end_expr: box end_expr, step_expr: box step_expr, body_expr: box body_expr}, parsed_tokens)
 }
 
 fn parse_paren_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Expression> {

@@ -3,16 +3,18 @@ use parser;
 use context::Context;
 use module::ModuleProvider;
 
-use llvm_sys::LLVMRealPredicate::LLVMRealOLT;
+use llvm_sys::LLVMRealPredicate::{LLVMRealOLT, LLVMRealONE};
 use llvm_sys::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction;
 use llvm_sys::core::LLVMDeleteFunction;
 use llvm_sys::prelude::LLVMValueRef;
 
 use iron_llvm::{LLVMRef, LLVMRefCtor};
 use iron_llvm::core;
+use iron_llvm::core::basic_block::BasicBlock;
 use iron_llvm::core::value::*;
 // use iron_llvm::core::value::{Function, FunctionCtor, FunctionRef, RealConstRef, RealConstCtor};
 use iron_llvm::core::types::{FunctionTypeCtor, FunctionTypeRef, RealTypeCtor, RealTypeRef};
+use iron_llvm::core::instruction::{PHINode, PHINodeRef};
 
 pub type Runnable = bool;
 pub type IRBuildingResult = Result<(LLVMValueRef, Runnable), String>;
@@ -149,6 +151,43 @@ impl IRBuilder for parser::Expression {
         }
       },
 
+      &parser::ConditionalExpr{ref cond_expr, ref then_expr, ref else_expr} => {
+        let (cond_value, _) = try!(cond_expr.codegen(context, module_provider));
+        let zero = RealConstRef::get(&context.ty, 0.0);
+        let ifcond = context.builder.build_fcmp(LLVMRealONE, cond_value, zero.to_ref(), "ifcond");
+
+        let block = context.builder.get_insert_block();
+        let mut function = block.get_parent();
+        let mut then_block = function.append_basic_block_in_context(&mut context.context, "then");
+        let mut else_block = function.append_basic_block_in_context(&mut context.context, "else");
+        let mut merge_block = function.append_basic_block_in_context(&mut context.context, "ifcont");
+        context.builder.build_cond_br(ifcond, &then_block, &else_block);
+
+        context.builder.position_at_end(&mut then_block);
+        let (then_value, _) = try!(then_expr.codegen(context, module_provider));
+        context.builder.build_br(&merge_block);
+        let then_end_block = context.builder.get_insert_block();
+
+        context.builder.position_at_end(&mut else_block);
+        let (else_value, _) = try!(else_expr.codegen(context, module_provider));
+        context.builder.build_br(&merge_block);
+        let else_end_block = context.builder.get_insert_block();
+
+        context.builder.position_at_end(&mut merge_block);
+        // TODO: fix builder methods, so they generate the right instruction
+        let mut phi = unsafe {
+          PHINodeRef::from_ref(context.builder.build_phi(context.ty.to_ref(), "ifphi"))
+        };
+        phi.add_incoming(vec![then_value].as_mut_slice(), vec![then_end_block].as_mut_slice());
+        phi.add_incoming(vec![else_value].as_mut_slice(), vec![else_end_block].as_mut_slice());
+
+        Ok((phi.to_ref(), false))
+      },
+
+      &parser::LoopExpr{ref var_name, ref start_expr, ref end_expr, ref step_expr, ref body_expr} => {
+        return loop_codegen(self, context, module_provider);
+      },
+
       &parser::CallExpr(ref name, ref args) => {
         let (function, _) = match module_provider.get_function(name) {
           Some(function) => function,
@@ -168,5 +207,55 @@ impl IRBuilder for parser::Expression {
         Ok((context.builder.build_call(function.to_ref(), args_value.as_mut_slice(), "calltmp"), false))
       }
     }
+  }
+}
+
+fn loop_codegen(expr: &parser::Expression, context: &mut Context, module_provider: &mut ModuleProvider) -> IRBuildingResult {
+  if let &parser::LoopExpr{ref var_name, ref start_expr, ref end_expr, ref step_expr, ref body_expr} = expr {
+    let (start_value, _) = try!(start_expr.codegen(context, module_provider));
+
+    let preheader_block = context.builder.get_insert_block();
+    let mut function = preheader_block.get_parent();
+
+    let mut preloop_block = function.append_basic_block_in_context(&mut context.context, "preloop");
+    context.builder.build_br(&preloop_block);
+    context.builder.position_at_end(&mut preloop_block);
+
+    let mut variable = unsafe {
+      PHINodeRef::from_ref(context.builder.build_phi(context.ty.to_ref(), var_name))
+    };
+    variable.add_incoming(vec![start_value].as_mut_slice(), vec![preheader_block].as_mut_slice());
+    let old_value = context.named_values.remove(var_name);
+    context.named_values.insert(var_name.clone(), variable.to_ref());
+
+    let (end_value, _) = try!(end_expr.codegen(context, module_provider));
+    let zero = RealConstRef::get(&context.ty, 0.0);
+    let end_cond = context.builder.build_fcmp(LLVMRealONE, end_value, zero.to_ref(), "loopcond");
+
+    let mut after_block = function.append_basic_block_in_context(&mut context.context, "afterloop");
+    let mut loop_block = function.append_basic_block_in_context(&mut context.context, "loop");
+
+    context.builder.build_cond_br(end_cond, &loop_block, &after_block);
+
+    context.builder.position_at_end(&mut loop_block);
+    try!(body_expr.codegen(context, module_provider));
+
+    let (step_value, _) = try!(step_expr.codegen(context, module_provider));
+    let next_value = context.builder.build_fadd(variable.to_ref(), step_value, "nextvar");
+    let loop_end_block = context.builder.get_insert_block();
+    variable.add_incoming(vec![next_value].as_mut_slice(), vec![loop_end_block].as_mut_slice());
+
+    context.builder.build_br(&preloop_block);
+
+    context.builder.position_at_end(&mut after_block);
+    context.named_values.remove(var_name);
+    match old_value {
+      Some(value) => {context.named_values.insert(var_name.clone(), value);},
+      None => ()
+    };
+
+    Ok((zero.to_ref(), false))
+  } else {
+    error("Expected loop expression")
   }
 }

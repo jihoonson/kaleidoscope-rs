@@ -37,8 +37,10 @@ fn main() {
     driver::Tokens
   } else if args.flag_i {
     driver::IR
-  } else {
+  } else if args.flag_p {
     driver::AST
+  } else {
+    driver::Exec
   };
 
   driver::main_loop(stage);

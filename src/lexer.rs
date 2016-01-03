@@ -3,6 +3,11 @@ use regex::Regex;
 pub use self::Token::{
   Def,
   Extern,
+  If,
+  Then,
+  Else,
+  For,
+  In,
   Delimiter,
   LeftParen,
   RightParen,
@@ -16,6 +21,11 @@ pub use self::Token::{
 pub enum Token {
   Def,
   Extern,
+  If,
+  Then,
+  Else,
+  For,
+  In,
   Delimiter,
   LeftParen,
   RightParen,
@@ -57,6 +67,11 @@ pub fn tokenize(input: &str) -> Vec<Token> {
               match cap.name(k).unwrap() {
                 "def" => Def,
                 "extern" => Extern,
+                "if" => If,
+                "then" => Then,
+                "else" => Else,
+                "for" => For,
+                "in" => In,
                 ident => Ident(ident.to_string()),
               }
             },
