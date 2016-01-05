@@ -11,6 +11,8 @@ use lexer::Token::{
   LeftParen,
   RightParen,
   Comma,
+  Binary,
+  Unary,
   Ident,
   Number,
   Operator
@@ -18,7 +20,8 @@ use lexer::Token::{
 use std::collections::HashMap;
 use parser::PartParsingResult::{Good, NotComplete, Bad};
 pub use self::ASTNode::{ExternNode, FunctionNode};
-pub use self::Expression::{LiteralExpr, VariableExpr, BinaryExpr, CallExpr, ConditionalExpr, LoopExpr};
+pub use self::Expression::{LiteralExpr, VariableExpr, BinaryExpr, UnaryExpr, CallExpr, ConditionalExpr, LoopExpr};
+pub use self::FunctionType::{Normal, BinaryOp, UnaryOp};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum ASTNode {
@@ -35,7 +38,15 @@ pub struct Function {
 #[derive(PartialEq, Clone, Debug)]
 pub struct Prototype {
   pub name: String,
+  pub ftype: FunctionType,
   pub args: Vec<String>
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum FunctionType {
+  Normal,
+  UnaryOp(String),
+  BinaryOp(String, i32) // name and precedence
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -43,6 +54,7 @@ pub enum Expression {
   LiteralExpr(f64),
   VariableExpr(String),
   BinaryExpr(String, Box<Expression>, Box<Expression>),
+  UnaryExpr(String, Box<Expression>),
   ConditionalExpr{cond_expr: Box<Expression>, then_expr: Box<Expression>, else_expr: Box<Expression>},
   LoopExpr{var_name: String, start_expr: Box<Expression>, end_expr: Box<Expression>, step_expr: Box<Expression>, body_expr: Box<Expression>},
   CallExpr(String, Vec<Expression>)
@@ -166,6 +178,15 @@ fn parse_function(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> Par
   tokens.pop();
   let mut parsed_tokens = vec![Def];
   let prototype = parse_try!(parse_prototype, tokens, settings, parsed_tokens);
+
+  // Update operator precedence table before parsing function body to handle dynamic grammar change
+  match prototype.ftype {
+    BinaryOp(ref symbol, precedence) => {
+      settings.operator_precedence.insert(symbol.clone(), precedence);
+    },
+    _ => ()
+  };
+
   let expression = parse_try!(parse_expr, tokens, settings, parsed_tokens);
 
   Good(FunctionNode(Function{prototype: prototype, expression: expression}), parsed_tokens)
@@ -174,9 +195,30 @@ fn parse_function(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> Par
 fn parse_prototype(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Prototype> {
   let mut parsed_tokens = Vec::new();
 
-  let name = expect_tokens!(
-    [Ident(name), Ident(name.clone()), name] <=
-      tokens, parsed_tokens, "expected function name in prototype"
+  let (name, ftype) = expect_tokens!([
+      Ident(name), Ident(name.clone()), (name, Normal);
+      Unary, Unary, {
+        let op = expect_tokens!([
+            Operator(op), Operator(op.clone()), op
+          ] <= tokens, parsed_tokens, "expected unary operator");
+          ("unary".to_string() + &op, UnaryOp(op))
+      };
+      Binary, Binary, {
+        let op = expect_tokens!([
+            Operator(op), Operator(op.clone()), op
+          ] <= tokens, parsed_tokens, "expected binary operator");
+        let precedence = expect_tokens!([
+            Number(value), Number(value), value as i32]
+            else {30}
+            <= tokens, parsed_tokens);
+
+        if precedence < 0 {
+          return error("negative precedence")
+        }
+
+        ("binary".to_string() + &op, BinaryOp(op, precedence))
+      }
+    ] <= tokens, parsed_tokens, "expected function name in prototype"
   );
 
   expect_tokens!(
@@ -196,14 +238,24 @@ fn parse_prototype(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> Pa
     );
   }
 
-  Good(Prototype{name: name, args: args}, parsed_tokens)
+  match ftype {
+    UnaryOp(_) => if args.len() != 1 {
+      return error("unary operator expects one argument");
+    },
+    BinaryOp(_, _) => if args.len() != 2 {
+      return error("binary operator expects two arguments")
+    },
+    _ => ()
+  }
+
+  Good(Prototype{name: name, args: args, ftype: ftype}, parsed_tokens)
 }
 
+// Parse function body
 fn parse_expression(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<ASTNode> {
-  // tokens.pop();
   let mut parsed_tokens = Vec::new();
   let expression = parse_try!(parse_expr, tokens, settings, parsed_tokens);
-  let prototype = Prototype{name: "".to_string(), args: vec![]};
+  let prototype = Prototype{name: "".to_string(), args: vec![], ftype: Normal};
   let func = Function{prototype: prototype, expression: expression};
   Good(FunctionNode(func), parsed_tokens)
 }
@@ -221,10 +273,24 @@ fn parse_primary_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) ->
     Some(&Number(_)) => parse_literal_expr(tokens, settings),
     Some(&If) => parse_conditional_expr(tokens, settings),
     Some(&For) => parse_for_expr(tokens, settings),
+    Some(&Operator(_)) => parse_unary_expr(tokens, settings),
     Some(&LeftParen) => parse_paren_expr(tokens, settings),
     None => NotComplete,
     _ => error("unknown token when expecting an expression")
   }
+}
+
+fn parse_unary_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Expression> {
+  let mut parsed_tokens = Vec::new();
+
+  let name = expect_tokens!([
+      Operator(name), Operator(name.clone()), name
+    ] <= tokens, parsed_tokens, "unary operator expected"
+  );
+
+  let operand = parse_try!(parse_primary_expr, tokens, settings, parsed_tokens);
+
+  Good(UnaryExpr(name, box operand), parsed_tokens)
 }
 
 fn parse_ident_expr(tokens: &mut Vec<Token>, settings: &mut ParserSettings) -> PartParsingResult<Expression> {

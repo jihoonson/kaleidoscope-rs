@@ -147,9 +147,27 @@ impl IRBuilder for parser::Expression {
             // convert boolean to double 0.0 or 1.0
             Ok((context.builder.build_ui_to_fp(cmp, context.ty.to_ref(), "booltmp"), false))
           },
-          _ => error("invalid binary operator")
+          op => {
+            let name = "binary".to_string() + op;
+            let (function, _) = match module_provider.get_function(&name) {
+              Some(function) => function,
+              None => return error("binary operator not found")
+            };
+
+            let mut args_value = vec![lhs_value, rhs_value];
+
+            Ok((context.builder.build_call(function.to_ref(),
+                                          args_value.as_mut_slice(),
+                                          "binop"),
+                                        false))
+          }
+          // _ => error("invalid binary operator")
         }
       },
+
+      &parser::UnaryExpr(ref name, ref operand) => {
+        return unary_codegen(self, context, module_provider);
+      }
 
       &parser::ConditionalExpr{ref cond_expr, ref then_expr, ref else_expr} => {
         let (cond_value, _) = try!(cond_expr.codegen(context, module_provider));
@@ -257,5 +275,22 @@ fn loop_codegen(expr: &parser::Expression, context: &mut Context, module_provide
     Ok((zero.to_ref(), false))
   } else {
     error("Expected loop expression")
+  }
+}
+
+fn unary_codegen(expr: &parser::Expression, context: &mut Context, module_provider: &mut ModuleProvider) -> IRBuildingResult {
+  if let &parser::UnaryExpr(ref name, ref operand) = expr {
+    let (operand, _) = try!(operand.codegen(context, module_provider));
+    let name = "unary".to_string() + name;
+    let (function, _) = match module_provider.get_function(name.as_str()) {
+      Some(f) => f,
+      None => return error("unary operator not found")
+    };
+
+    let mut args = vec![operand];
+
+    Ok((context.builder.build_call(function.to_ref(), args.as_mut_slice(), "unop"), true))
+  } else {
+    error("Expected unary expression")
   }
 }

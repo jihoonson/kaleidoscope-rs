@@ -12,6 +12,8 @@ pub use self::Token::{
   LeftParen,
   RightParen,
   Comma,
+  Binary,
+  Unary,
   Ident,
   Number,
   Operator
@@ -30,6 +32,8 @@ pub enum Token {
   LeftParen,
   RightParen,
   Comma,
+  Binary,
+  Unary,
   Ident(String),
   Number(f64),
   Operator(String)
@@ -72,6 +76,8 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 "else" => Else,
                 "for" => For,
                 "in" => In,
+                "binary" => Binary,
+                "unary" => Unary,
                 ident => Ident(ident.to_string()),
               }
             },
